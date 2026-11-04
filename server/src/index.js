@@ -28,6 +28,15 @@ app.use('/api', rateLimit({
   legacyHeaders: false
 }));
 
+// Root route
+app.get('/', (_req, res) => {
+  res.json({
+    message: 'Cynbit Project Builder API is running',
+    status: 'ok'
+  });
+});
+
+// Health check
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
@@ -36,8 +45,17 @@ app.get('/api/health', (_req, res) => {
   });
 });
 
+// Project routes
 app.use('/api/projects', projectRoutes);
 
+// 404 handler
+app.use((_req, res) => {
+  res.status(404).json({
+    message: 'API route not found'
+  });
+});
+
+// Error handler
 app.use((err, _req, res, _next) => {
   console.error(err);
   res.status(500).json({
