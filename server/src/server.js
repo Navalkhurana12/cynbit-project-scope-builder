@@ -1,3 +1,4 @@
+
 import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
@@ -8,24 +9,75 @@ import projectRoutes from './routes/projects.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-app.locals.demoProjects = [];
-app.use(helmet());
-app.use(cors({ origin: process.env.CLIENT_ORIGIN?.split(',') ?? 'http://localhost:5173' }));
-app.use(express.json({ limit: '30kb' }));
-app.use('/api', rateLimit({ windowMs: 15 * 60 * 1000, limit: 100, standardHeaders: 'draft-7', legacyHeaders: false }));
-app.get('/api/health', (_req, res) => res.json({ status: 'ok', database: mongoose.connection.readyState === 1 ? 'connected' : 'demo-mode' }));
-app.use('/api/projects', projectRoutes);
-app.use((err, _req, res, _next) => {
-  console.error(err);
-  res.status(500).json({ message: 'Something went wrong. Please try again.' });
-});
 
-if (process.env.MONGO_URI) {
-  mongoose.connect(process.env.MONGO_URI)
-    .then(() => console.log('MongoDB connected'))
-    .catch((error) => console.error('MongoDB connection failed:', error.message));
-} else {
-  console.warn('MONGO_URI not set: running in demo-memory mode. Submissions will not persist after restart.');
+let connectionPromise;
+
+export async function connectDB() {
+  if (mongoose.connection.readyState === 1) return;
+
+  if (!process.env.MONGO_URI) {
+    throw new Error('MONGO_URI is not configured');
+  }
+
+  if (!connectionPromise) {
+    connectionPromise = mongoose.connect(process.env.MONGO_URI)
+      .catch((error) => {
+        connectionPromise = null;
+        throw error;
+      });
+  }
+
+  await connectionPromise;
 }
 
-app.listen(PORT, () => console.log(`Cynbit Builder API running at http://localhost:${PORT}`));
+app.locals.demoProjects = [];
+
+app.use(helmet());
+
+app.use(cors({
+  origin: process.env.CLIENT_ORIGIN
+    ? process.env.CLIENT_ORIGIN.split(',').map(url => url.trim())
+    : 'http://localhost:5173'
+}));
+
+app.use(express.json({ limit: '30kb' }));
+
+app.use('/api', rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 100,
+  standardHeaders: 'draft-7',
+  legacyHeaders: false
+}));
+
+app.get('/api/health', (_req, res) => {
+  res.json({
+    status: 'ok',
+    database: mongoose.connection.readyState === 1
+      ? 'connected'
+      : 'disconnected'
+  });
+});
+
+app.use('/api/projects', projectRoutes);
+
+app.use((err, _req, res, _next) => {
+  console.error(err);
+  res.status(500).json({
+    message: 'Something went wrong. Please try again.'
+  });
+});
+
+// Local development only
+if (!process.env.VERCEL) {
+  if (process.env.MONGO_URI) {
+    connectDB()
+      .then(() => console.log('MongoDB connected'))
+      .catch(error => console.error('MongoDB connection failed:', error.message));
+  }
+
+  app.listen(PORT, () => {
+    console.log(`Cynbit Builder API running at http://localhost:${PORT}`);
+  });
+}
+
+export default app;
