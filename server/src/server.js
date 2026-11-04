@@ -4,31 +4,10 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import mongoose from 'mongoose';
 import projectRoutes from './routes/projects.js';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-
-let connectionPromise;
-
-export async function connectDB() {
-  if (mongoose.connection.readyState === 1) return;
-
-  if (!process.env.MONGO_URI) {
-    throw new Error('MONGO_URI is not configured');
-  }
-
-  if (!connectionPromise) {
-    connectionPromise = mongoose.connect(process.env.MONGO_URI)
-      .catch((error) => {
-        connectionPromise = null;
-        throw error;
-      });
-  }
-
-  await connectionPromise;
-}
 
 app.locals.demoProjects = [];
 
@@ -52,9 +31,8 @@ app.use('/api', rateLimit({
 app.get('/api/health', (_req, res) => {
   res.json({
     status: 'ok',
-    database: mongoose.connection.readyState === 1
-      ? 'connected'
-      : 'disconnected'
+    database: 'not-required',
+    storage: 'demo-memory'
   });
 });
 
@@ -69,12 +47,6 @@ app.use((err, _req, res, _next) => {
 
 // Local development only
 if (!process.env.VERCEL) {
-  if (process.env.MONGO_URI) {
-    connectDB()
-      .then(() => console.log('MongoDB connected'))
-      .catch(error => console.error('MongoDB connection failed:', error.message));
-  }
-
   app.listen(PORT, () => {
     console.log(`Cynbit Builder API running at http://localhost:${PORT}`);
   });
